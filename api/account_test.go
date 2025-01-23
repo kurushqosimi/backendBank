@@ -9,6 +9,7 @@ import (
 	mockdb "github.com/kurushqosimi/backendBank/db/mock"
 	db "github.com/kurushqosimi/backendBank/db/sqlc"
 	"github.com/kurushqosimi/backendBank/util"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
@@ -184,6 +185,44 @@ func TestCreateAccount(t *testing.T) {
 			},
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusBadRequest, recorder.Code)
+			},
+		},
+		{
+			name:    "UniqueViolation",
+			account: account,
+			buildStubs: func(store *mockdb.MockStore) {
+				arg := db.CreateAccountParams{
+					Owner:    account.Owner,
+					Balance:  0,
+					Currency: account.Currency,
+				}
+
+				store.EXPECT().
+					CreateAccount(gomock.Any(), gomock.Eq(arg)).
+					Times(1).
+					Return(db.Account{}, &pq.Error{Code: "23505", Message: "unique_violation"})
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusForbidden, recorder.Code)
+			},
+		},
+		{
+			name:    "ForeignKeyViolation",
+			account: account,
+			buildStubs: func(store *mockdb.MockStore) {
+				arg := db.CreateAccountParams{
+					Owner:    account.Owner,
+					Balance:  0,
+					Currency: account.Currency,
+				}
+
+				store.EXPECT().
+					CreateAccount(gomock.Any(), gomock.Eq(arg)).
+					Times(1).
+					Return(db.Account{}, &pq.Error{Code: "23503", Message: "foreign_key_violation"})
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusForbidden, recorder.Code)
 			},
 		},
 	}

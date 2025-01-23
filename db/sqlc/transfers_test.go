@@ -14,8 +14,10 @@ func TestCreateTransfer(t *testing.T) {
 }
 
 func createRandomTransfer(t *testing.T) Transfer {
+	user1 := createRandomUser(t)
+
 	arg1 := CreateAccountParams{
-		Owner:    util.RandomOwner(),
+		Owner:    user1.Username,
 		Balance:  util.RandomMoney(),
 		Currency: util.RandomCurrency(),
 	}
@@ -24,8 +26,10 @@ func createRandomTransfer(t *testing.T) Transfer {
 	require.NoError(t, err)
 	require.NotEmpty(t, account1)
 
+	user2 := createRandomUser(t)
+
 	arg2 := CreateAccountParams{
-		Owner:    util.RandomOwner(),
+		Owner:    user2.Username,
 		Balance:  util.RandomMoney(),
 		Currency: util.RandomCurrency(),
 	}
