@@ -64,41 +64,87 @@ func TestCreateTransfer(t *testing.T) {
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusOK, recorder.Code)
 			},
-		},
+		}, // OK
 		{
-			name: "InvalidAccountID",
-			body: gin.H{
-				"from_account_id": account1.ID,
-				"to_account_id":   0,
-				"amount":          10,
-				"currency":        util.USD,
-			},
-			buildStubs: func(store *mockdb.MockStore) {
-				store.EXPECT().
-					TransferTx(gomock.Any(), gomock.Any()).
-					Times(0)
-			},
-			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusBadRequest, recorder.Code)
-			},
-		},
-		{
-			name: "InvalidAmount",
+			name: "FromAccountNotFound",
 			body: gin.H{
 				"from_account_id": account1.ID,
 				"to_account_id":   account2.ID,
-				"amount":          0,
+				"amount":          amount,
 				"currency":        util.USD,
 			},
 			buildStubs: func(store *mockdb.MockStore) {
 				store.EXPECT().
-					TransferTx(gomock.Any(), gomock.Any()).
-					Times(0)
+					GetAccount(gomock.Any(), gomock.Eq(account1.ID)).
+					Times(1).
+					Return(db.Account{}, sql.ErrNoRows)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusNotFound, recorder.Code)
+			},
+		}, // FromAccountNotFound
+		{
+			name: "ToAccountNotFound",
+			body: gin.H{
+				"from_account_id": account1.ID,
+				"to_account_id":   account2.ID,
+				"amount":          amount,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					GetAccount(gomock.Any(), gomock.Eq(account1.ID)).
+					Times(1).
+					Return(account1, nil)
+				store.EXPECT().
+					GetAccount(gomock.Any(), gomock.Eq(account2.ID)).
+					Times(1).
+					Return(db.Account{}, sql.ErrNoRows)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusNotFound, recorder.Code)
+			},
+		}, // ToAccountNotFound
+		{
+			name: "FromAccountCurrencyMismatch",
+			body: gin.H{
+				"from_account_id": account3.ID,
+				"to_account_id":   account1.ID,
+				"amount":          amount,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					GetAccount(gomock.Any(), gomock.Eq(account3.ID)).
+					Times(1).
+					Return(account3, nil)
 			},
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusBadRequest, recorder.Code)
 			},
-		},
+		}, // FromAccountCurrencyMismatch
+		{
+			name: "ToAccountCurrencyMismatch",
+			body: gin.H{
+				"from_account_id": account1.ID,
+				"to_account_id":   account3.ID,
+				"amount":          amount,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					GetAccount(gomock.Any(), gomock.Eq(account1.ID)).
+					Times(1).
+					Return(account1, nil)
+				store.EXPECT().
+					GetAccount(gomock.Any(), gomock.Eq(account3.ID)).
+					Times(1).
+					Return(account3, nil)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusBadRequest, recorder.Code)
+			},
+		}, // ToAccountCurrencyMismatch
 		{
 			name: "InvalidCurrency",
 			body: gin.H{
@@ -115,9 +161,78 @@ func TestCreateTransfer(t *testing.T) {
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusBadRequest, recorder.Code)
 			},
-		},
+		}, // InvalidCurrency
 		{
-			name: "InternalError",
+			name: "InvalidAmount",
+			body: gin.H{
+				"from_account_id": account1.ID,
+				"to_account_id":   account2.ID,
+				"amount":          0,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					TransferTx(gomock.Any(), gomock.Any()).
+					Times(0)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusBadRequest, recorder.Code)
+			},
+		}, // InvalidAmount
+		{
+			name: "GetAccountError",
+			body: gin.H{
+				"from_account_id": account1.ID,
+				"to_account_id":   account2.ID,
+				"amount":          amount,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					GetAccount(gomock.Any(), gomock.Eq(account1.ID)).
+					Times(1).
+					Return(db.Account{}, sql.ErrConnDone)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusInternalServerError, recorder.Code)
+			},
+		}, // GetAccountError
+		{
+			name: "ToAccountInvalidID",
+			body: gin.H{
+				"from_account_id": account1.ID,
+				"to_account_id":   0,
+				"amount":          10,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					TransferTx(gomock.Any(), gomock.Any()).
+					Times(0)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusBadRequest, recorder.Code)
+			},
+		}, // ToAccountInvalidID
+		{
+			name: "FromAccountInvalidID",
+			body: gin.H{
+				"from_account_id": 0,
+				"to_account_id":   account2.ID,
+				"amount":          10,
+				"currency":        util.USD,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				store.EXPECT().
+					TransferTx(gomock.Any(), gomock.Any()).
+					Times(0)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, http.StatusBadRequest, recorder.Code)
+			},
+		}, // FromAccountInvalidID
+		{
+			name: "TransferTxError",
 			body: gin.H{
 				"from_account_id": account1.ID,
 				"to_account_id":   account2.ID,
@@ -145,50 +260,11 @@ func TestCreateTransfer(t *testing.T) {
 					TransferTx(gomock.Any(), gomock.Eq(arg)).
 					Return(db.TransferTxResult{}, sql.ErrConnDone)
 			},
+
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusInternalServerError, recorder.Code)
 			},
-		},
-		{
-			name: "AccountNotFound",
-			body: gin.H{
-				"from_account_id": account1.ID,
-				"to_account_id":   account2.ID,
-				"amount":          amount,
-				"currency":        util.USD,
-			},
-			buildStubs: func(store *mockdb.MockStore) {
-				store.EXPECT().
-					GetAccount(gomock.Any(), gomock.Eq(account1.ID)).
-					Times(1).
-					Return(db.Account{}, sql.ErrNoRows)
-			},
-			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusNotFound, recorder.Code)
-			},
-		},
-		{
-			name: "Account2NotFound",
-			body: gin.H{
-				"from_account_id": account1.ID,
-				"to_account_id":   account2.ID,
-				"amount":          amount,
-				"currency":        util.USD,
-			},
-			buildStubs: func(store *mockdb.MockStore) {
-				store.EXPECT().
-					GetAccount(gomock.Any(), gomock.Eq(account1.ID)).
-					Times(1).
-					Return(account1, nil)
-				store.EXPECT().
-					GetAccount(gomock.Any(), gomock.Eq(account2.ID)).
-					Times(1).
-					Return(db.Account{}, sql.ErrNoRows)
-			},
-			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusNotFound, recorder.Code)
-			},
-		},
+		}, // TransferTxError
 		{
 			name: "validAccountInternalError",
 			body: gin.H{
@@ -206,7 +282,7 @@ func TestCreateTransfer(t *testing.T) {
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusInternalServerError, recorder.Code)
 			},
-		},
+		}, // validAccountInternalError
 		{
 			name: "validAccountBadRequest",
 			body: gin.H{
@@ -224,7 +300,7 @@ func TestCreateTransfer(t *testing.T) {
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusBadRequest, recorder.Code)
 			},
-		},
+		}, // validAccountBadRequest
 	}
 
 	for i := range testCases {
